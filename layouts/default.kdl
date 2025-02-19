@@ -7,13 +7,13 @@ layout {
         	pane name="Yazi" {
         		size 40
         		command "fish"
-        		args "-c" "hide-cli {session_id} yazi ."
+        		args "-c" "SESSION_ID={session_id} hide-cli run yazi ."
         		close_on_exit true
         	}
         	pane name="Helix" {
         		focus true
         		command "fish"
-        		args "-c" "hide-cli {session_id} hx ."
+        		args "-c" "SESSION_ID={session_id} hide-cli run hx ."
         		close_on_exit true
         	} 
         }

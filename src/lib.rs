@@ -97,9 +97,20 @@ fn parse_v0_message(payload: &str) -> Result<Message> {
 }
 
 pub fn parse_terminal_command(terminal_command: &str) -> Option<(InstanceType, u128)> {
-    let mut split = terminal_command.split_whitespace();
+    const SESSION_ID_MARKER: &str = "SESSION_ID=";
+
+    let session_id_idx = terminal_command.find(SESSION_ID_MARKER)? + SESSION_ID_MARKER.len();
+    let session_id_end_idx = terminal_command[session_id_idx..].find(' ')?;
+    let session_id = terminal_command[session_id_idx..session_id_idx + session_id_end_idx]
+        .parse::<u128>()
+        .ok()?;
+
+    let mut split = terminal_command[session_id_end_idx..].split_whitespace();
+
     split.position(|s| s == "hide-cli")?;
-    let session_id = split.next()?.parse::<u128>().ok()?;
+
+    // consume the cli command, should be "run" in this case
+    split.next();
 
     let typ = match split.next()? {
         "hx" => InstanceType::Helix,
@@ -197,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_parse_terminal_command_helix_with_shell() {
-        let terminal_command = "fish -c hide-cli 1234 hx";
+        let terminal_command = "fish -c SESSION_ID=1234 hide-cli run hx .";
         let (typ, session_id) = parse_terminal_command(terminal_command).unwrap();
         assert_eq!(typ, InstanceType::Helix);
         assert_eq!(session_id, 1234);
@@ -205,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_parse_terminal_command_helix() {
-        let terminal_command = "hide-cli 1234 hx";
+        let terminal_command = "fish -c SESSION_ID=1234 hide-cli run hx";
         let (typ, session_id) = parse_terminal_command(terminal_command).unwrap();
         assert_eq!(typ, InstanceType::Helix);
         assert_eq!(session_id, 1234);
@@ -213,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_parse_terminal_command_yazi() {
-        let terminal_command = "hide-cli 5678 yazi";
+        let terminal_command = "fish -c SESSION_ID=5678 hide-cli run yazi";
         let (typ, session_id) = parse_terminal_command(terminal_command).unwrap();
         assert_eq!(typ, InstanceType::Yazi);
         assert_eq!(session_id, 5678);
@@ -221,21 +232,21 @@ mod tests {
 
     #[test]
     fn test_parse_terminal_command_invalid_type() {
-        let terminal_command = "hide-cli 9012 invalid";
+        let terminal_command = "fish -c SESSION_ID=9012 hide-cli run invalid";
         let result = parse_terminal_command(terminal_command);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_parse_terminal_command_missing_session_id() {
-        let terminal_command = "hide-cli hx";
+        let terminal_command = "fish -c hide-cli run hx";
         let result = parse_terminal_command(terminal_command);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_parse_terminal_command_invalid_session_id() {
-        let terminal_command = "hide-cli abc hx";
+        let terminal_command = "fish -c SESSION_ID=abc hide-cli run hx";
         let result = parse_terminal_command(terminal_command);
         assert!(result.is_none());
     }
