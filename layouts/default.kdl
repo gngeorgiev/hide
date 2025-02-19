@@ -1,19 +1,19 @@
 layout {
-    tab name="{tab_name}" {
+    tab name="{tab_name}" cwd="{path}" {
         pane size=1 borderless=true {
             plugin location="tab-bar"
         }
         pane split_direction="vertical" {
-        	pane name="File explorer" {
+        	pane name="Yazi" {
         		size 40
-        		command "hide-cli"
-        		args "{session_id}" "yazi" "{path}"
+        		command "fish"
+        		args "-c" "hide-cli {session_id} yazi ."
         		close_on_exit true
         	}
         	pane name="Helix" {
         		focus true
-        		command "hide-cli"
-        		args "{session_id}" "hx" "{path}"
+        		command "fish"
+        		args "-c" "hide-cli {session_id} hx ."
         		close_on_exit true
         	} 
         }

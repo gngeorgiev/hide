@@ -19,7 +19,9 @@ struct State {
     initialized: bool,
     events_backlog: VecDeque<Event>,
     pipe_backlog: VecDeque<PipeMessage>,
+
     instances: HashMap<u128, Vec<Instance>>,
+    focused_session_id: u128,
 }
 
 impl State {
@@ -36,28 +38,14 @@ impl State {
                         }
 
                         let terminal_command = pane.terminal_command.clone().unwrap();
-                        let mut split = terminal_command.split_whitespace();
-
-                        if let Some(cmd) = split.next()
-                            && cmd != "hide-cli"
-                        {
+                        let Some((typ, session_id)) = parse_terminal_command(&terminal_command)
+                        else {
                             continue;
+                        };
+
+                        if pane.is_focused {
+                            self.focused_session_id = session_id;
                         }
-
-                        let Some(session_id) = split.next() else {
-                            continue;
-                        };
-
-                        let session_id = session_id.parse::<u128>().expect("invalid session id");
-
-                        let typ = match split.next() {
-                            Some(typ) => match typ {
-                                "hx" => InstanceType::Helix,
-                                "yazi" => InstanceType::Yazi,
-                                _ => continue,
-                            },
-                            None => continue,
-                        };
 
                         update_instances.push(session_id);
                         self.instances
@@ -108,6 +96,11 @@ impl State {
                         .as_millis();
                     self.new_tab(&new_instance.name, &new_instance.path, session_id);
                 }
+                V0Message::EditFile(edit_file) => {
+                    if let Err(e) = self.edit_file(&edit_file.path) {
+                        dbg!("edit_file error:", e);
+                    }
+                }
             },
         }
 
@@ -121,6 +114,28 @@ impl State {
         layout = layout.replace("{path}", path);
 
         new_tabs_with_layout(&layout);
+    }
+
+    fn edit_file(&self, path: &str) -> lib::Result<()> {
+        let instances = self.instances.get(&self.focused_session_id).ok_or(format!(
+            "invalid focused session id: {}",
+            &self.focused_session_id
+        ))?;
+
+        let helix_instance = instances
+            .iter()
+            .find(|p| p.typ == InstanceType::Helix)
+            .expect("must have a helix panel");
+
+        let pane_id = PaneId::Terminal(helix_instance.pane.id);
+        focus_pane_with_id(pane_id, true);
+        // Write Esc to go back to normal mode
+        write_to_pane_id(vec![27], pane_id);
+        write_chars_to_pane_id(format!(":o {}", path).as_str(), pane_id);
+        // Write Enter to confirm command
+        write_to_pane_id(vec![13], pane_id);
+
+        Ok(())
     }
 }
 

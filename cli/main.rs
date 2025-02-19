@@ -14,7 +14,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let command_args = &args[3..];
 
     let mut cmd = Command::new(command);
-    cmd.args(command_args)
+    cmd.current_dir(env::current_dir()?)
+        .envs(env::vars())
+        .args(command_args)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
