@@ -21,6 +21,9 @@ struct State {
     pipe_backlog: VecDeque<PipeMessage>,
 
     instances: HashMap<u128, Vec<Instance>>,
+    // TODO: should we keep this even if there's no longer a focused pane?
+    // maybe keeping it as the last focused session is fine as it will allow external
+    // tools to somewhat interact with it through the cli without specifying a session explicitly
     focused_session_id: u128,
 }
 

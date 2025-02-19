@@ -11,7 +11,7 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    let _session_id = env::var("SESSION_ID")?;
+    let _session_id = env::var("SESSION_ID").unwrap_or_default();
     let command = &args[1];
     let command_args = &args[2..];
     match command.as_str() {
