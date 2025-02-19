@@ -1,0 +1,16 @@
+[package]
+name = "hide"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "hide-cli"
+path = "cli/main.rs"
+
+[lib]
+
+[target.wasm32-wasip1]
+runner = "wasmtime"
+
+[dependencies]
+zellij-tile = "0.41.2"
