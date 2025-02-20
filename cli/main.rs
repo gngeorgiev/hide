@@ -1,5 +1,7 @@
 use std::env;
-use std::process::{Command, Stdio};
+use std::path::PathBuf;
+use std::process::{Command, ExitStatus, Stdio};
+use std::str::FromStr;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -11,19 +13,49 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
 
+    let cwd = env::current_dir()?;
+
     let _session_id = env::var("SESSION_ID").unwrap_or_default();
     let command = &args[1];
     let command_args = &args[2..];
-    match command.as_str() {
+    let status = match command.as_str() {
         "run" => run_command(&command_args)?,
         "pipe" => pipe_command(&command_args)?,
+        "new" => {
+            let path = command_args
+                .get(0)
+                .map(|s| PathBuf::from_str(s.as_str()))
+                .ok_or("invalid path".to_string())?
+                .unwrap_or(cwd);
+
+            let file_name = if path.is_file() {
+                path.parent().and_then(|f| f.file_name())
+            } else {
+                path.file_name()
+            };
+
+            let file_name = file_name
+                .ok_or(format!("invalid file path {path:?}"))
+                .map(|f| f.to_str().map(String::from))?
+                .ok_or("invalid path buf {path:?}".to_string())?;
+
+            pipe_command(&[
+                "new_instance".into(),
+                format!("name={file_name}"),
+                format!("path={}", path.to_string_lossy().to_string()),
+            ])?
+        }
         _ => return Err("invalid command: {command}".into()),
+    };
+
+    if !status.success() {
+        std::process::exit(status.code().unwrap_or(1));
     }
 
     Ok(())
 }
 
-fn run_command(args: &[String]) -> Result<()> {
+fn run_command(args: &[String]) -> Result<ExitStatus> {
     let command = &args[0];
     let command_args = &args[1..];
     let mut cmd = Command::new(command);
@@ -34,17 +66,10 @@ fn run_command(args: &[String]) -> Result<()> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
-    let mut child = cmd.spawn()?;
-    let status = child.wait()?;
-
-    if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
-    }
-
-    Ok(())
+    cmd.status().map_err(Into::into)
 }
 
-fn pipe_command(args: &[String]) -> Result<()> {
+fn pipe_command(args: &[String]) -> Result<ExitStatus> {
     let mut message = String::new();
     message.push('0'); // protocol version
     message.push_str(&args[0]); // message type, e.g. edit_file
@@ -59,23 +84,14 @@ fn pipe_command(args: &[String]) -> Result<()> {
     }
 
     let mut cmd = Command::new("zellij");
-    cmd.arg("action")
+    cmd.current_dir(env::current_dir()?)
+        .envs(env::vars())
+        .arg("action")
         .arg("pipe")
         .arg("--plugin")
         .arg("hide")
         .arg("--")
-        .arg(message)
-        .envs(env::vars())
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
+        .arg(message);
 
-    let mut child = cmd.spawn()?;
-    let status = child.wait()?;
-
-    if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
-    }
-
-    Ok(())
+    cmd.status().map_err(Into::into)
 }
