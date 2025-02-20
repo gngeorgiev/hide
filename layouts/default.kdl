@@ -7,7 +7,7 @@ layout {
         	pane name="Yazi" {
         		size 40
         		command "fish"
-        		args "-c" "SESSION_ID={session_id} hide-cli run yazi ."
+        		args "-c" "SESSION_ID={session_id} hide-cli run yazi --client-id={session_id} ."
         		close_on_exit true
         	}
         	pane name="Helix" {

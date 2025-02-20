@@ -15,9 +15,15 @@ pub struct EditFileMessage {
 }
 
 #[derive(Debug)]
+pub struct NavigateFileExplorer {
+    pub path: String,
+}
+
+#[derive(Debug)]
 pub enum V0Message {
     NewInstance(NewInstanceMessage),
     EditFile(EditFileMessage),
+    NavigateFileExplorer(NavigateFileExplorer),
 }
 
 #[derive(Debug)]
@@ -88,6 +94,9 @@ fn parse_v0_message(payload: &str) -> Result<Message> {
             path: extract_message_key!(kvs, "path"),
         }),
         "edit_file" => V0Message::EditFile(EditFileMessage {
+            path: extract_message_key!(kvs, "path"),
+        }),
+        "navigate_file_explorer" => V0Message::NavigateFileExplorer(NavigateFileExplorer {
             path: extract_message_key!(kvs, "path"),
         }),
         _ => return Err(format!("invalid protocol message {command}")),

@@ -3,7 +3,8 @@
 use std::{
     collections::{HashMap, VecDeque},
     ops::{Deref, Index},
-    time::{SystemTime, UNIX_EPOCH},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use lib::*;
@@ -71,7 +72,7 @@ impl State {
     }
 
     fn handle_pipe_message(&mut self, msg: PipeMessage) -> bool {
-        // dbg!("Handle pipe message: ", &msg);
+        dbg!("Handle pipe message: ", &msg);
         let pipe_id = match msg.source {
             PipeSource::Cli(pipe_id) => pipe_id,
             _ => return false,
@@ -104,6 +105,11 @@ impl State {
                         dbg!("edit_file error:", e);
                     }
                 }
+                V0Message::NavigateFileExplorer(navigate) => {
+                    if let Err(e) = self.navigate_file_explorer(&navigate.path) {
+                        eprintln!("navigate file explorer error: {e}");
+                    }
+                }
             },
         }
 
@@ -119,27 +125,64 @@ impl State {
         new_tabs_with_layout(&layout);
     }
 
-    fn edit_file(&self, path: &str) -> lib::Result<()> {
-        let instances = self.instances.get(&self.focused_session_id).ok_or(format!(
-            "invalid focused session id: {}",
-            &self.focused_session_id
-        ))?;
+    fn find_instance_type(&self, typ: InstanceType) -> lib::Result<&Instance> {
+        let session_id = &self.focused_session_id;
+        let instances = self
+            .instances
+            .get(session_id)
+            .ok_or_else(|| format!("invalid session id: {session_id}"))?;
 
-        let helix_instance = instances
+        let instance = instances
             .iter()
-            .find(|p| p.typ == InstanceType::Helix)
-            .expect("must have a helix panel");
+            .find(|p| p.typ == typ)
+            .ok_or_else(|| format!("invalid instance type {typ:?} for session {session_id}"))?;
 
-        let pane_id = PaneId::Terminal(helix_instance.pane.id);
+        Ok(instance)
+    }
+
+    fn write_to_instance(&self, instance: &Instance, w: &[WriteToPane]) {
+        let pane_id = PaneId::Terminal(instance.pane.id);
         focus_pane_with_id(pane_id, true);
-        // Write Esc to go back to normal mode
-        write_to_pane_id(vec![27], pane_id);
-        write_chars_to_pane_id(format!(":o {}", path).as_str(), pane_id);
-        // Write Enter to confirm command
-        write_to_pane_id(vec![13], pane_id);
+        for w in w {
+            thread::sleep(Duration::from_millis(50));
+
+            match w {
+                WriteToPane::Bytes(b) => write_to_pane_id(b.to_vec(), pane_id),
+                WriteToPane::String(s) => write_chars_to_pane_id(s.as_str(), pane_id),
+                WriteToPane::Enter => write_to_pane_id(vec![13], pane_id),
+                WriteToPane::Escape => write_to_pane_id(vec![27], pane_id),
+            }
+        }
+    }
+
+    fn edit_file(&self, path: &str) -> lib::Result<()> {
+        let helix = self.find_instance_type(InstanceType::Helix)?;
+        self.write_to_instance(helix, &[
+            // Write Esc to go back to normal mode
+            WriteToPane::Escape,
+            WriteToPane::String(format!(":o {}", path)),
+            // Write Enter to confirm command
+            WriteToPane::Enter,
+        ]);
 
         Ok(())
     }
+
+    fn navigate_file_explorer(&self, path: &str) -> lib::Result<()> {
+        let explorer = self.find_instance_type(InstanceType::Yazi)?;
+        self.write_to_instance(explorer, &[
+            WriteToPane::String(format!(":ya emit cd {path}")),
+            WriteToPane::Enter,
+        ]);
+        Ok(())
+    }
+}
+
+enum WriteToPane {
+    Bytes(Vec<u8>),
+    String(String),
+    Enter,
+    Escape,
 }
 
 impl ZellijPlugin for State {
