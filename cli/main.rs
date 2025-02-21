@@ -40,10 +40,12 @@ fn main() -> Result<()> {
                 .map(|f| f.to_str().map(String::from))?
                 .ok_or("invalid path buf {path:?}".to_string())?;
 
+            let path = path.to_string_lossy().to_string();
+
             pipe_command(&plugin_name, &[
                 "new_instance".into(),
                 format!("name={file_name}"),
-                format!("path={}", path.to_string_lossy().to_string()),
+                format!("path={}", &path),
             ])?
         }
         _ => return Err("invalid command: {command}".into()),
@@ -92,7 +94,10 @@ fn pipe_command(plugin_name: &str, args: &[String]) -> Result<ExitStatus> {
         .arg("--plugin")
         .arg(plugin_name)
         .arg("--")
-        .arg(message);
+        .arg(message)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
 
     cmd.status().map_err(Into::into)
 }

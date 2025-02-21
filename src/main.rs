@@ -21,7 +21,7 @@ struct State {
     events_backlog: VecDeque<Event>,
     pipe_backlog: VecDeque<PipeMessage>,
 
-    instances: HashMap<u128, Vec<Instance>>,
+    instances: HashMap<u128, Vec<InstancePane>>,
     // TODO: should we keep this even if there's no longer a focused pane?
     // maybe keeping it as the last focused session is fine as it will allow external
     // tools to somewhat interact with it through the cli without specifying a session explicitly
@@ -36,18 +36,18 @@ impl State {
                 self.instances.drain();
 
                 for (tab_index, panes) in manifest.panes {
-                    for pane in panes {
-                        if pane.is_plugin || pane.terminal_command.is_none() {
+                    for info in panes {
+                        if info.is_plugin || info.terminal_command.is_none() {
                             continue;
                         }
 
-                        let terminal_command = pane.terminal_command.clone().unwrap();
+                        let terminal_command = info.terminal_command.clone().unwrap();
                         let Some((typ, session_id)) = parse_terminal_command(&terminal_command)
                         else {
                             continue;
                         };
 
-                        if pane.is_focused {
+                        if info.is_focused {
                             self.focused_session_id = session_id;
                         }
 
@@ -55,15 +55,15 @@ impl State {
                         self.instances
                             .entry(session_id)
                             .or_insert_with(Vec::new)
-                            .push(Instance {
-                                pane,
+                            .push(InstancePane {
+                                info,
                                 tab_index,
                                 typ,
                             });
                     }
                 }
 
-                dbg!(&self.instances);
+                dbg!(&self.focused_session_id);
             }
             _ => {}
         }
@@ -102,18 +102,25 @@ impl State {
                 }
                 V0Message::EditFile(edit_file) => {
                     if let Err(e) = self.edit_file(&edit_file.path) {
-                        dbg!("edit_file error:", e);
+                        eprintln!("edit_file error: {e}");
                     }
                 }
-                V0Message::NavigateFileExplorer(navigate) => {
-                    if let Err(e) = self.navigate_file_explorer(&navigate.path) {
-                        eprintln!("navigate file explorer error: {e}");
+                V0Message::FocusPane(focus_pane) => {
+                    if let Err(e) = self.focus_instance_type(focus_pane.typ.as_str().into()) {
+                        eprintln!("errro focus pane: {e}")
                     }
                 }
             },
         }
 
         false
+    }
+
+    fn focus_instance_type(&self, typ: PaneType) -> lib::Result<()> {
+        let instance = self.find_instance_type(typ)?;
+        focus_pane_with_id(PaneId::Terminal(instance.info.id), true);
+
+        Ok(())
     }
 
     fn new_tab(&self, tab_name: &str, path: &str, session_id: u128) {
@@ -125,7 +132,7 @@ impl State {
         new_tabs_with_layout(&layout);
     }
 
-    fn find_instance_type(&self, typ: InstanceType) -> lib::Result<&Instance> {
+    fn find_instance_type(&self, typ: PaneType) -> lib::Result<&InstancePane> {
         let session_id = &self.focused_session_id;
         let instances = self
             .instances
@@ -140,8 +147,8 @@ impl State {
         Ok(instance)
     }
 
-    fn write_to_instance(&self, instance: &Instance, w: &[WriteToPane]) {
-        let pane_id = PaneId::Terminal(instance.pane.id);
+    fn write_to_instance(&self, instance: &InstancePane, w: &[WriteToPane]) {
+        let pane_id = PaneId::Terminal(instance.info.id);
         focus_pane_with_id(pane_id, true);
         for w in w {
             thread::sleep(Duration::from_millis(50));
@@ -156,8 +163,8 @@ impl State {
     }
 
     fn edit_file(&self, path: &str) -> lib::Result<()> {
-        let helix = self.find_instance_type(InstanceType::Helix)?;
-        self.write_to_instance(helix, &[
+        let editor = self.find_instance_type(PaneType::Editor)?;
+        self.write_to_instance(editor, &[
             // Write Esc to go back to normal mode
             WriteToPane::Escape,
             WriteToPane::String(format!(":o {}", path)),
@@ -165,15 +172,6 @@ impl State {
             WriteToPane::Enter,
         ]);
 
-        Ok(())
-    }
-
-    fn navigate_file_explorer(&self, path: &str) -> lib::Result<()> {
-        let explorer = self.find_instance_type(InstanceType::Yazi)?;
-        self.write_to_instance(explorer, &[
-            WriteToPane::String(format!(":ya emit cd {path}")),
-            WriteToPane::Enter,
-        ]);
         Ok(())
     }
 }

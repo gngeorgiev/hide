@@ -15,15 +15,15 @@ pub struct EditFileMessage {
 }
 
 #[derive(Debug)]
-pub struct NavigateFileExplorer {
-    pub path: String,
+pub struct FocusPaneMessage {
+    pub typ: String,
 }
 
 #[derive(Debug)]
 pub enum V0Message {
     NewInstance(NewInstanceMessage),
     EditFile(EditFileMessage),
-    NavigateFileExplorer(NavigateFileExplorer),
+    FocusPane(FocusPaneMessage),
 }
 
 #[derive(Debug)]
@@ -32,16 +32,27 @@ pub enum Message {
 }
 
 #[derive(Debug)]
-pub struct Instance {
-    pub pane: PaneInfo,
+pub struct InstancePane {
+    pub info: PaneInfo,
     pub tab_index: usize,
-    pub typ: InstanceType,
+    pub typ: PaneType,
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum InstanceType {
-    Helix,
-    Yazi,
+pub enum PaneType {
+    Unknown,
+    Editor,
+    FileExplorer,
+}
+
+impl From<&str> for PaneType {
+    fn from(value: &str) -> Self {
+        match value {
+            "editor" => PaneType::Editor,
+            "file_explorer" => PaneType::FileExplorer,
+            _ => PaneType::Unknown,
+        }
+    }
 }
 
 pub fn parse_pipe_message(payload: &str) -> Result<Message> {
@@ -88,6 +99,7 @@ fn parse_v0_message(payload: &str) -> Result<Message> {
         kvs.insert(k, v);
     }
 
+    // TODO: move this to the message to reduce amount of places we need to change
     let message = match *command {
         "new_instance" => V0Message::NewInstance(NewInstanceMessage {
             name: extract_message_key!(kvs, "name"),
@@ -96,8 +108,8 @@ fn parse_v0_message(payload: &str) -> Result<Message> {
         "edit_file" => V0Message::EditFile(EditFileMessage {
             path: extract_message_key!(kvs, "path"),
         }),
-        "navigate_file_explorer" => V0Message::NavigateFileExplorer(NavigateFileExplorer {
-            path: extract_message_key!(kvs, "path"),
+        "focus_pane" => V0Message::FocusPane(FocusPaneMessage {
+            typ: extract_message_key!(kvs, "type"),
         }),
         _ => return Err(format!("invalid protocol message {command}")),
     };
@@ -105,7 +117,7 @@ fn parse_v0_message(payload: &str) -> Result<Message> {
     Ok(Message::V0(message))
 }
 
-pub fn parse_terminal_command(terminal_command: &str) -> Option<(InstanceType, u128)> {
+pub fn parse_terminal_command(terminal_command: &str) -> Option<(PaneType, u128)> {
     const SESSION_ID_MARKER: &str = "SESSION_ID=";
 
     let session_id_idx = terminal_command.find(SESSION_ID_MARKER)? + SESSION_ID_MARKER.len();
@@ -122,8 +134,8 @@ pub fn parse_terminal_command(terminal_command: &str) -> Option<(InstanceType, u
     split.next();
 
     let typ = match split.next()? {
-        "hx" => InstanceType::Helix,
-        "yazi" => InstanceType::Yazi,
+        "hx" => PaneType::Editor,
+        "yazi" => PaneType::FileExplorer,
         _ => return None,
     };
 
@@ -219,7 +231,7 @@ mod tests {
     fn test_parse_terminal_command_helix_with_shell() {
         let terminal_command = "fish -c SESSION_ID=1234 hide-cli run hx .";
         let (typ, session_id) = parse_terminal_command(terminal_command).unwrap();
-        assert_eq!(typ, InstanceType::Helix);
+        assert_eq!(typ, PaneType::Editor);
         assert_eq!(session_id, 1234);
     }
 
@@ -227,7 +239,7 @@ mod tests {
     fn test_parse_terminal_command_helix() {
         let terminal_command = "fish -c SESSION_ID=1234 hide-cli run hx";
         let (typ, session_id) = parse_terminal_command(terminal_command).unwrap();
-        assert_eq!(typ, InstanceType::Helix);
+        assert_eq!(typ, PaneType::Editor);
         assert_eq!(session_id, 1234);
     }
 
@@ -235,7 +247,7 @@ mod tests {
     fn test_parse_terminal_command_yazi() {
         let terminal_command = "fish -c SESSION_ID=5678 hide-cli run yazi";
         let (typ, session_id) = parse_terminal_command(terminal_command).unwrap();
-        assert_eq!(typ, InstanceType::Yazi);
+        assert_eq!(typ, PaneType::FileExplorer);
         assert_eq!(session_id, 5678);
     }
 
