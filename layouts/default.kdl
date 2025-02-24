@@ -4,13 +4,13 @@ layout {
             plugin location="tab-bar"
         }
         pane split_direction="vertical" {
-        	pane name="Yazi" {
+        	pane name="File explorer" {
         		size 40
         		command "fish"
         		args "-c" "SESSION_ID={session_id} SESSION_CWD={path} hide-cli run yazi --client-id={session_id} ."
         		close_on_exit true
         	}
-        	pane name="Helix" {
+        	pane name="Editor" {
         		focus true
         		command "fish"
         		args "-c" "SESSION_ID={session_id} SESSION_CWD={path} hide-cli run hx ."

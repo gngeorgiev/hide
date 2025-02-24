@@ -31,26 +31,40 @@ pub enum Message {
     V0(V0Message),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct InstancePane {
     pub info: PaneInfo,
     pub tab_index: usize,
     pub typ: PaneType,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum PaneType {
     Unknown,
     Editor,
     FileExplorer,
 }
 
+impl Default for PaneType {
+    fn default() -> Self {
+        PaneType::Unknown
+    }
+}
+
 impl From<&str> for PaneType {
     fn from(value: &str) -> Self {
-        match value {
-            "editor" => PaneType::Editor,
-            "file_explorer" => PaneType::FileExplorer,
-            _ => PaneType::Unknown,
+        if ["editor", "helix", "hx"]
+            .iter()
+            .any(|e| value.eq_ignore_ascii_case(e))
+        {
+            PaneType::Editor
+        } else if ["file explorer", "file_explorer", "yazi"]
+            .iter()
+            .any(|f| value.eq_ignore_ascii_case(f))
+        {
+            PaneType::FileExplorer
+        } else {
+            PaneType::Unknown
         }
     }
 }
@@ -117,7 +131,7 @@ fn parse_v0_message(payload: &str) -> Result<Message> {
     Ok(Message::V0(message))
 }
 
-pub fn parse_terminal_command(terminal_command: &str) -> Option<(PaneType, u128)> {
+pub fn extract_session_id_from_cmd(terminal_command: &str) -> Option<u128> {
     const SESSION_ID_MARKER: &str = "SESSION_ID=";
 
     let session_id_idx = terminal_command.find(SESSION_ID_MARKER)? + SESSION_ID_MARKER.len();
@@ -126,20 +140,7 @@ pub fn parse_terminal_command(terminal_command: &str) -> Option<(PaneType, u128)
         .parse::<u128>()
         .ok()?;
 
-    let mut split = terminal_command[session_id_end_idx..].split_whitespace();
-
-    split.position(|s| s == "hide-cli")?;
-
-    // consume the cli command, should be "run" in this case
-    split.next();
-
-    let typ = match split.next()? {
-        "hx" => PaneType::Editor,
-        "yazi" => PaneType::FileExplorer,
-        _ => return None,
-    };
-
-    Some((typ, session_id))
+    return Some(session_id);
 }
 
 #[cfg(test)]
@@ -228,47 +229,44 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_terminal_command_helix_with_shell() {
+    fn test_extract_session_id_helix_with_shell() {
         let terminal_command = "fish -c SESSION_ID=1234 hide-cli run hx .";
-        let (typ, session_id) = parse_terminal_command(terminal_command).unwrap();
-        assert_eq!(typ, PaneType::Editor);
+        let session_id = extract_session_id_from_cmd(terminal_command).unwrap();
         assert_eq!(session_id, 1234);
     }
 
     #[test]
-    fn test_parse_terminal_command_helix() {
+    fn test_extract_session_id_helix() {
         let terminal_command = "fish -c SESSION_ID=1234 hide-cli run hx";
-        let (typ, session_id) = parse_terminal_command(terminal_command).unwrap();
-        assert_eq!(typ, PaneType::Editor);
+        let session_id = extract_session_id_from_cmd(terminal_command).unwrap();
         assert_eq!(session_id, 1234);
     }
 
     #[test]
-    fn test_parse_terminal_command_yazi() {
+    fn test_extract_session_id_yazi() {
         let terminal_command = "fish -c SESSION_ID=5678 hide-cli run yazi";
-        let (typ, session_id) = parse_terminal_command(terminal_command).unwrap();
-        assert_eq!(typ, PaneType::FileExplorer);
+        let session_id = extract_session_id_from_cmd(terminal_command).unwrap();
         assert_eq!(session_id, 5678);
     }
 
     #[test]
-    fn test_parse_terminal_command_invalid_type() {
+    fn test_extract_session_id_invalid_type() {
         let terminal_command = "fish -c SESSION_ID=9012 hide-cli run invalid";
-        let result = parse_terminal_command(terminal_command);
+        let result = extract_session_id_from_cmd(terminal_command);
         assert!(result.is_none());
     }
 
     #[test]
-    fn test_parse_terminal_command_missing_session_id() {
+    fn test_extract_session_id_missing_session_id() {
         let terminal_command = "fish -c hide-cli run hx";
-        let result = parse_terminal_command(terminal_command);
+        let result = extract_session_id_from_cmd(terminal_command);
         assert!(result.is_none());
     }
 
     #[test]
-    fn test_parse_terminal_command_invalid_session_id() {
+    fn test_extract_session_id_invalid_session_id() {
         let terminal_command = "fish -c SESSION_ID=abc hide-cli run hx";
-        let result = parse_terminal_command(terminal_command);
+        let result = extract_session_id_from_cmd(terminal_command);
         assert!(result.is_none());
     }
 }

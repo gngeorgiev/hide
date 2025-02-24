@@ -15,22 +15,34 @@ mod lib;
 
 static LAYOUT: &'static str = include_str!("../layouts/default.kdl");
 
+#[derive(Default, Debug)]
+struct FocusedSession {
+    id: u128,
+    tab: usize,
+}
+
 #[derive(Default)]
 struct State {
     initialized: bool,
     events_backlog: VecDeque<Event>,
     pipe_backlog: VecDeque<PipeMessage>,
 
+    focused_tab: TabInfo,
     instances: HashMap<u128, Vec<InstancePane>>,
     // TODO: should we keep this even if there's no longer a focused pane?
     // maybe keeping it as the last focused session is fine as it will allow external
     // tools to somewhat interact with it through the cli without specifying a session explicitly
-    focused_session_id: u128,
+    focused_session: FocusedSession,
 }
 
 impl State {
     fn handle_event(&mut self, ev: Event) -> bool {
         match ev {
+            Event::TabUpdate(tabs) => {
+                if let Some(active_tab) = tabs.iter().find(|tab| tab.active) {
+                    self.focused_tab = active_tab.clone();
+                }
+            }
             Event::PaneUpdate(manifest) => {
                 let mut update_instances = vec![];
                 self.instances.drain();
@@ -42,33 +54,46 @@ impl State {
                         }
 
                         let terminal_command = info.terminal_command.clone().unwrap();
-                        let Some((typ, session_id)) = parse_terminal_command(&terminal_command)
+                        let Some(session_id) = extract_session_id_from_cmd(&terminal_command)
                         else {
                             continue;
                         };
-
-                        if info.is_focused {
-                            self.focused_session_id = session_id;
-                        }
 
                         update_instances.push(session_id);
                         self.instances
                             .entry(session_id)
                             .or_insert_with(Vec::new)
                             .push(InstancePane {
+                                typ: PaneType::from(info.title.as_str()),
                                 info,
                                 tab_index,
-                                typ,
                             });
                     }
                 }
 
-                dbg!(&self.focused_session_id);
+                self.set_focused_session();
+                dbg!(&self.focused_session);
             }
             _ => {}
         }
 
         false
+    }
+
+    fn set_focused_session(&mut self) {
+        for (session_id, panes) in &self.instances {
+            if let Some(pane) = panes
+                .iter()
+                .find(|pane| pane.tab_index == self.focused_tab.position && pane.info.is_focused)
+                .map(Clone::clone)
+            {
+                self.focused_session = FocusedSession {
+                    id: *session_id,
+                    tab: pane.tab_index,
+                };
+                break;
+            }
+        }
     }
 
     fn handle_pipe_message(&mut self, msg: PipeMessage) -> bool {
@@ -117,7 +142,7 @@ impl State {
     }
 
     fn focus_instance_type(&self, typ: PaneType) -> lib::Result<()> {
-        let instance = self.find_instance_type(typ)?;
+        let instance = self.find_instance_by_type(typ)?;
         focus_pane_with_id(PaneId::Terminal(instance.info.id), true);
 
         Ok(())
@@ -132,17 +157,19 @@ impl State {
         new_tabs_with_layout(&layout);
     }
 
-    fn find_instance_type(&self, typ: PaneType) -> lib::Result<&InstancePane> {
-        let session_id = &self.focused_session_id;
+    fn find_instance_by_type(&self, typ: PaneType) -> lib::Result<&InstancePane> {
+        let focused_session = &self.focused_session;
+        let focused_session_id = &focused_session.id;
         let instances = self
             .instances
-            .get(session_id)
-            .ok_or_else(|| format!("invalid session id: {session_id}"))?;
+            .get(focused_session_id)
+            .ok_or_else(|| format!("invalid session id: {focused_session_id}"))?;
 
-        let instance = instances
-            .iter()
-            .find(|p| p.typ == typ)
-            .ok_or_else(|| format!("invalid instance type {typ:?} for session {session_id}"))?;
+        dbg!("find_instance_by_type", focused_session_id);
+        dbg!("find_instance_by_type", instances);
+        let instance = instances.iter().find(|p| p.typ == typ).ok_or_else(|| {
+            format!("invalid instance type {typ:?} for session {focused_session_id}")
+        })?;
 
         Ok(instance)
     }
@@ -163,7 +190,7 @@ impl State {
     }
 
     fn edit_file(&self, path: &str) -> lib::Result<()> {
-        let editor = self.find_instance_type(PaneType::Editor)?;
+        let editor = self.find_instance_by_type(PaneType::Editor)?;
         self.write_to_instance(editor, &[
             // Write Esc to go back to normal mode
             WriteToPane::Escape,
@@ -192,7 +219,11 @@ impl ZellijPlugin for State {
             PermissionType::RunCommands,
         ]);
 
-        subscribe(&[EventType::PermissionRequestResult, EventType::PaneUpdate]);
+        subscribe(&[
+            EventType::PermissionRequestResult,
+            EventType::PaneUpdate,
+            EventType::TabUpdate,
+        ]);
     }
 
     fn update(&mut self, ev: Event) -> bool {
