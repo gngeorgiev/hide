@@ -43,6 +43,7 @@ pub enum PaneType {
     Unknown,
     Editor,
     FileExplorer,
+    Terminal,
 }
 
 impl Default for PaneType {
@@ -63,6 +64,11 @@ impl From<&str> for PaneType {
             .any(|f| value.eq_ignore_ascii_case(f))
         {
             PaneType::FileExplorer
+        } else if ["terminal", "shell", "term"]
+            .iter()
+            .any(|t| t.eq_ignore_ascii_case(value))
+        {
+            PaneType::Terminal
         } else {
             PaneType::Unknown
         }

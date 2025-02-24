@@ -16,6 +16,12 @@ layout {
         		args "-c" "SESSION_ID={session_id} SESSION_CWD={path} hide-cli run hx ."
         		close_on_exit true
         	} 
+        	pane name="Terminal" {
+        	    size 80
+        	    command "fish"
+        	    args "-c" "SESSION_ID={session_id} fish"
+        	    close_on_exit false
+        	}
         }
         pane size=1 borderless=true {
             plugin location="status-bar"

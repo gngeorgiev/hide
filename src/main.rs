@@ -39,27 +39,30 @@ impl State {
     fn handle_event(&mut self, ev: Event) -> bool {
         match ev {
             Event::TabUpdate(tabs) => {
-                if let Some(active_tab) = tabs.iter().find(|tab| tab.active) {
-                    self.focused_tab = active_tab.clone();
+                if let Some(active_tab) = tabs.into_iter().find(|tab| tab.active) {
+                    self.focused_tab = active_tab;
+                    self.set_focused_session();
                 }
             }
             Event::PaneUpdate(manifest) => {
-                let mut update_instances = vec![];
                 self.instances.drain();
 
                 for (tab_index, panes) in manifest.panes {
                     for info in panes {
-                        if info.is_plugin || info.terminal_command.is_none() {
+                        if info.is_plugin {
                             continue;
                         }
 
-                        let terminal_command = info.terminal_command.clone().unwrap();
-                        let Some(session_id) = extract_session_id_from_cmd(&terminal_command)
+                        let Some(terminal_command) = &info.terminal_command else {
+                            continue;
+                        };
+
+                        let Some(session_id) =
+                            extract_session_id_from_cmd(terminal_command.as_str())
                         else {
                             continue;
                         };
 
-                        update_instances.push(session_id);
                         self.instances
                             .entry(session_id)
                             .or_insert_with(Vec::new)
@@ -80,6 +83,9 @@ impl State {
         false
     }
 
+    // set_focused_session is a best effort to set the focused session based on the
+    // selected tab and pane. It's called on both tab and pane updates to not rely on order
+    // although generally the order is tab event followed by pane event.
     fn set_focused_session(&mut self) {
         for (session_id, panes) in &self.instances {
             if let Some(pane) = panes
@@ -98,10 +104,10 @@ impl State {
 
     fn handle_pipe_message(&mut self, msg: PipeMessage) -> bool {
         dbg!("Handle pipe message: ", &msg);
-        let pipe_id = match msg.source {
-            PipeSource::Cli(pipe_id) => pipe_id,
-            _ => return false,
-        };
+        // let pipe_id = match msg.source {
+        //     PipeSource::Cli(pipe_id) => pipe_id,
+        //     _ => return false,
+        // };
 
         let payload = match msg.payload {
             Some(payload) => payload,
@@ -132,7 +138,7 @@ impl State {
                 }
                 V0Message::FocusPane(focus_pane) => {
                     if let Err(e) = self.focus_instance_type(focus_pane.typ.as_str().into()) {
-                        eprintln!("errro focus pane: {e}")
+                        eprintln!("error focus pane: {e}")
                     }
                 }
             },
