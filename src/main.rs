@@ -2,9 +2,7 @@
 
 use std::{
     collections::{HashMap, VecDeque},
-    ops::{Deref, Index},
-    thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use lib::*;
