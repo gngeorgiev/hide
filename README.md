@@ -1,13 +1,13 @@
 # H(elix)ide
 
-Hide is a [zellij](https://github.com/zellij-org/zellij) plugin and a CLI providing a somewhat IDE environment for [helix](https://github.com/helix-editor/helix).
+Hide is a [zellij](https://github.com/zellij-org/zellij) plugin and a CLI providing something of an IDE environment for [helix](https://github.com/helix-editor/helix).
 
 The main goal is to provide good environment-agnostic experience through a combination of the plugin and cli, with no shell scripts.
 
 **HIDE** keeps track of all zellij panes and can focus them, write to them through the plugin regardless of your layout. Or send other commands through the cli.
 
 > [!WARNING]
-> This is a very very early stage project. It works on my machine but unless you have all of my specific settings it probably won't on yours. Even the default templates are using fish shell, which no everybody has installed. I advice to observe this from afar only. Also, the name's not probably sticking.
+> This is a very very early stage project. It works on my machine but unless you have all of my specific settings it probably won't on yours. Even the default templates are using fish shell, which not everybody has installed. I advice to observe this from afar only. Also, the name's probably not sticking.
 
 https://github.com/user-attachments/assets/5daa0d0b-06de-4b35-b5f9-4072a31f160f
 
@@ -90,14 +90,14 @@ plugins {
 
 ## Helix
 
-No specific helix configs for now, although you can focus or write to panes from helix as well:
+No specific helix configs for now, although you can focus or write to panes from within helix as well:
 
 ```toml
 [keys.normal.space.W]
 e = ":sh hide-cli pipe focus_pane type=file_explorer"
 t = ":sh hide-cli pipe focus_pane type=terminal"
 g = ":sh hide-cli pipe focus_pane type=lazygit"
-i = ":sh: hide-cli pipe write_to_pane type=terminal;data=<esc>echo hi<enter>"
+i = ":sh hide-cli pipe write_to_pane type=terminal;data=<esc>echo hi<enter>"
 ```
 
 Some changes will have to be contributed to helix or some PRs cherry-picked for the best experience. TBD.
