@@ -28,14 +28,12 @@ layout {
         }
 
         floating_panes {
-            pane {           
-                pane name="Lazygit" {
-                    width "60%"
-                    height "60%"
-                    command "fish"
-                    args "-c" "SESSION_ID={session_id} lazygit"
-                    close_on_exit false
-                }
+            pane name="Lazygit" {
+                width "60%"
+                height "60%"
+                command "fish"
+                args "-c" "SESSION_ID={session_id} lazygit"
+                close_on_exit false
             }
         }
     }
