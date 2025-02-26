@@ -1,5 +1,5 @@
 layout {
-    tab name="{tab_name}" cwd="{path}" {
+    tab name="{tab_name}" cwd="{path}" hide_floating_panes=true {
         pane size=1 borderless=true {
             plugin location="tab-bar"
         }
@@ -25,6 +25,18 @@ layout {
         }
         pane size=1 borderless=true {
             plugin location="status-bar"
+        }
+
+        floating_panes {
+            pane {           
+                pane name="Lazygit" {
+                    width "60%"
+                    height "60%"
+                    command "fish"
+                    args "-c" "SESSION_ID={session_id} lazygit"
+                    close_on_exit false
+                }
+            }
         }
     }
 }

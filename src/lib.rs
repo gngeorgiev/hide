@@ -19,11 +19,76 @@ pub struct FocusPaneMessage {
     pub typ: String,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum WriteToPane {
+    Bytes(Vec<u8>),
+    String(String),
+    Enter,
+    Escape,
+}
+
+#[derive(Debug)]
+pub struct WritesToPane(pub Vec<WriteToPane>);
+
+impl TryFrom<&str> for WritesToPane {
+    type Error = String;
+
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        let mut v = vec![];
+        let mut chars = value.chars().enumerate();
+        let mut str = String::new();
+
+        while let Some((idx, ch)) = chars.next() {
+            match ch {
+                '<' => {
+                    if !str.is_empty() {
+                        v.push(WriteToPane::String(str.clone()));
+                        str.truncate(0);
+                    }
+
+                    let Some(end) = chars.position(|(_, ch)| ch == '>') else {
+                        return Err("< not terminated properly with a >".into());
+                    };
+
+                    let symbol = &value[idx + 1..idx + end + 1];
+                    let w = match symbol {
+                        "enter" => WriteToPane::Enter,
+                        "esc" => WriteToPane::Escape,
+                        _ => {
+                            return Err(format!(
+                                "invalid <symbol>: {symbol}, valid: <enter>, <esc>"
+                            ));
+                        }
+                    };
+
+                    v.push(w);
+                }
+                _ => {
+                    str.push(ch);
+                }
+            }
+        }
+
+        if !str.is_empty() {
+            v.push(WriteToPane::String(str));
+        }
+
+        Ok(WritesToPane(v))
+    }
+}
+
+#[derive(Debug)]
+pub struct WriteToPaneMessage {
+    pub typ: PaneType,
+    pub data: WritesToPane,
+}
+
 #[derive(Debug)]
 pub enum V0Message {
     NewInstance(NewInstanceMessage),
     EditFile(EditFileMessage),
     FocusPane(FocusPaneMessage),
+    WriteToPane(WriteToPaneMessage),
 }
 
 #[derive(Debug)]
@@ -38,12 +103,22 @@ pub struct InstancePane {
     pub typ: PaneType,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, Clone)]
 pub enum PaneType {
     Unknown,
     Editor,
     FileExplorer,
     Terminal,
+    Custom(String),
+}
+
+impl PartialEq for PaneType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (PaneType::Custom(a), PaneType::Custom(b)) => a.eq_ignore_ascii_case(b),
+            (a, b) => std::mem::discriminant(a) == std::mem::discriminant(b),
+        }
+    }
 }
 
 impl Default for PaneType {
@@ -70,7 +145,7 @@ impl From<&str> for PaneType {
         {
             PaneType::Terminal
         } else {
-            PaneType::Unknown
+            PaneType::Custom(value.into())
         }
     }
 }
@@ -131,6 +206,13 @@ fn parse_v0_message(payload: &str) -> Result<Message> {
         "focus_pane" => V0Message::FocusPane(FocusPaneMessage {
             typ: extract_message_key!(kvs, "type"),
         }),
+        "write_to_pane" => V0Message::WriteToPane(WriteToPaneMessage {
+            typ: extract_message_key!(kvs, "type"),
+            data: {
+                let data_str: String = extract_message_key!(kvs, "data");
+                data_str.as_str().try_into()?
+            },
+        }),
         _ => return Err(format!("invalid protocol message {command}")),
     };
 
@@ -152,6 +234,53 @@ pub fn extract_session_id_from_cmd(terminal_command: &str) -> Option<u128> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_writes_to_pane_empty() {
+        let input = "";
+        let result = WritesToPane::try_from(input).unwrap();
+        assert_eq!(result.0.len(), 0);
+    }
+
+    #[test]
+    fn test_writes_to_pane_string_only() {
+        let input = "hello world";
+        let result = WritesToPane::try_from(input).unwrap();
+        assert_eq!(result.0.len(), 1);
+        assert_eq!(result.0[0], WriteToPane::String("hello world".into()));
+    }
+
+    #[test]
+    fn test_writes_to_pane_with_symbols() {
+        let input = "<esc>:rla<enter>";
+        let result = WritesToPane::try_from(input).unwrap();
+        assert_eq!(result.0.len(), 3);
+        assert_eq!(result.0[0], WriteToPane::Escape);
+        assert_eq!(result.0[1], WriteToPane::String(":rla".into()));
+        assert_eq!(result.0[2], WriteToPane::Enter);
+    }
+
+    #[test]
+    fn test_writes_to_pane_invalid_symbol() {
+        let input = "<invalid>";
+        let result = WritesToPane::try_from(input);
+        assert!(result.is_err());
+        assert_eq!(
+            result.err().unwrap(),
+            "invalid <symbol>: invalid, valid: <enter>, <esc>".to_string()
+        );
+    }
+
+    #[test]
+    fn test_writes_to_pane_unclosed_symbol() {
+        let input = "data=<esc";
+        let result = WritesToPane::try_from(input);
+        assert!(result.is_err());
+        assert_eq!(
+            result.err().unwrap(),
+            "< not terminated properly with a >".to_string()
+        );
+    }
 
     #[test]
     fn test_parse_pipe_message_new_instance_with_path() {
@@ -253,13 +382,6 @@ mod tests {
         let terminal_command = "fish -c SESSION_ID=5678 hide-cli run yazi";
         let session_id = extract_session_id_from_cmd(terminal_command).unwrap();
         assert_eq!(session_id, 5678);
-    }
-
-    #[test]
-    fn test_extract_session_id_invalid_type() {
-        let terminal_command = "fish -c SESSION_ID=9012 hide-cli run invalid";
-        let result = extract_session_id_from_cmd(terminal_command);
-        assert!(result.is_none());
     }
 
     #[test]

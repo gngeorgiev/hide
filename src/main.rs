@@ -138,7 +138,12 @@ impl State {
                 }
                 V0Message::FocusPane(focus_pane) => {
                     if let Err(e) = self.focus_instance_type(focus_pane.typ.as_str().into()) {
-                        eprintln!("error focus pane: {e}")
+                        eprintln!("error focus pane: {e}");
+                    }
+                }
+                V0Message::WriteToPane(write_to_pane) => {
+                    if let Err(e) = self.write_to_pane(write_to_pane.typ, &write_to_pane.data.0) {
+                        eprintln!("error write to pane: {e}");
                     }
                 }
             },
@@ -171,21 +176,18 @@ impl State {
             .get(focused_session_id)
             .ok_or_else(|| format!("invalid session id: {focused_session_id}"))?;
 
-        dbg!("find_instance_by_type", focused_session_id);
-        dbg!("find_instance_by_type", instances);
-        let instance = instances.iter().find(|p| p.typ == typ).ok_or_else(|| {
+        let instance = instances.iter().find(|p| p.typ.eq(&typ)).ok_or_else(|| {
             format!("invalid instance type {typ:?} for session {focused_session_id}")
         })?;
 
         Ok(instance)
     }
 
-    fn write_to_instance(&self, instance: &InstancePane, w: &[WriteToPane]) {
+    fn write_to_pane(&self, typ: PaneType, w: &[WriteToPane]) -> lib::Result<()> {
+        let instance = self.find_instance_by_type(typ)?;
         let pane_id = PaneId::Terminal(instance.info.id);
         focus_pane_with_id(pane_id, true);
         for w in w {
-            thread::sleep(Duration::from_millis(50));
-
             match w {
                 WriteToPane::Bytes(b) => write_to_pane_id(b.to_vec(), pane_id),
                 WriteToPane::String(s) => write_chars_to_pane_id(s.as_str(), pane_id),
@@ -193,27 +195,19 @@ impl State {
                 WriteToPane::Escape => write_to_pane_id(vec![27], pane_id),
             }
         }
+
+        Ok(())
     }
 
     fn edit_file(&self, path: &str) -> lib::Result<()> {
-        let editor = self.find_instance_by_type(PaneType::Editor)?;
-        self.write_to_instance(editor, &[
+        self.write_to_pane(PaneType::Editor, &[
             // Write Esc to go back to normal mode
             WriteToPane::Escape,
             WriteToPane::String(format!(":o {}", path)),
             // Write Enter to confirm command
             WriteToPane::Enter,
-        ]);
-
-        Ok(())
+        ])
     }
-}
-
-enum WriteToPane {
-    Bytes(Vec<u8>),
-    String(String),
-    Enter,
-    Escape,
 }
 
 impl ZellijPlugin for State {
