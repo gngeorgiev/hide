@@ -9,7 +9,7 @@ The main goal is to provide good environment-agnostic experience through a combi
 > [!WARNING]
 > This is a very very early stage project. It works on my machine but unless you have all of my specific settings it probably won't on yours. Even the default templates are using fish shell, which no everybody has installed. I advice to observe this from afar only. Also, the name's not probably sticking.
 
-![demo](./resources/demo.mov)
+https://github.com/user-attachments/assets/5daa0d0b-06de-4b35-b5f9-4072a31f160f
 
 # A nonexaustive list of configs
 
